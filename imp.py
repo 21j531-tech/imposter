@@ -115,7 +115,6 @@ async def vote_player(ctx, member: discord.Member = None):
     
     if len(game["voted_users"]) >= len(game["players"]):
         await ctx.send("🔔 **投票結束!系統計票中...**")
-        await asyncio.sleep(1.5)
         
         vote_counts = {}
         for target_id in game["voted_users"].values():
