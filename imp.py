@@ -24,6 +24,9 @@ if sys.platform == 'win32':
 
 intents = discord.Intents.default()
 intents.message_content = True
+# 提示：如果你在 Discord Developer Portal 有開啟 Server Members Intent，也可以取消下面這行的註解：
+# intents.members = True 
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 支援多伺服器獨立儲存的遊戲資料庫,結構為 { guild_id: { 遊戲資料 } }
@@ -115,15 +118,22 @@ async def vote_player(ctx, member: discord.Member = None):
     
     if len(game["voted_users"]) >= len(game["players"]):
         await ctx.send("🔔 **投票結束!系統計票中...**")
+        await asyncio.sleep(1.5)
         
         vote_counts = {}
         for target_id in game["voted_users"].values():
             vote_counts[target_id] = vote_counts.get(target_id, 0) + 1
             
         highest_voted_id = max(vote_counts, key=vote_counts.get)
-        eliminated = ctx.guild.get_member(highest_voted_id)
-        await ctx.send(f"🪓 **{eliminated.display_name}** 獲得最高票,慘遭淘汰!")
-        await check_win_condition(ctx, eliminated)
+        
+        # 💡 修正處：改用 await fetch_member 確保一定能抓到使用者資料，即使快取防禦失效
+        try:
+            eliminated = await ctx.guild.fetch_member(highest_voted_id)
+            await ctx.send(f"🪓 **{eliminated.display_name}** 獲得最高票,慘遭淘汰!")
+            await check_win_condition(ctx, eliminated)
+        except discord.HTTPException:
+            await ctx.send("❌ 計票時發生錯誤，找不到該目標玩家。")
+            reset_all_game(ctx.guild.id)
 
 async def check_win_condition(ctx, eliminated):
     game = get_game_state(ctx.guild.id)
@@ -136,8 +146,12 @@ async def check_win_condition(ctx, eliminated):
     game["voted_users"].clear()
     
     if len(game["players"]) <= 2:
-        undercover_mem = ctx.guild.get_member(game["undercover_id"])
-        await ctx.send(f"😈 **【臥底獲勝!】** 臥底 {undercover_mem.mention} 活到了最後!")
+        # 💡 修正處：同樣改用 fetch_member 避免找不到臥底物件
+        try:
+            undercover_mem = await ctx.guild.fetch_member(game["undercover_id"])
+            await ctx.send(f"😈 **【臥底獲勝!】** 臥底 {undercover_mem.mention} 活到了最後!")
+        except discord.HTTPException:
+            await ctx.send(f"😈 **【臥底獲勝!】** 臥底活到了最後！")
         reset_all_game(ctx.guild.id)
     else:
         alive_names = "、".join([p.display_name for p in game["players"]])
